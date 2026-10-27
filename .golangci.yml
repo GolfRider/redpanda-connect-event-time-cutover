@@ -1,0 +1,8 @@
+version: "2"
+linters:
+  enable: [funlen, gocognit, nestif, dupl, errorlint, revive]
+  settings:
+    funlen: { lines: 60, statements: 40 }
+    gocognit: { min-complexity: 15 }
+formatters:
+  enable: [gofmt, goimports]

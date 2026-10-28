@@ -82,7 +82,8 @@ event_type: this.type
 		{"same ts, other group not cut yet", "new", `{"type":"payment","ts":1794781800000}`, false, ""},
 		{"passthrough needs no ts", "other", `{}`, true, ""},
 		{"unknown source", "elsewhere", `{"type":"order_created","ts":1794781800000}`, false, "not in from, to or passthrough"},
-		{"missing topic", "", `{"type":"order_created","ts":1794781800000}`, false, "not in from, to or passthrough"},
+		{"missing topic", "", `{"type":"order_created","ts":1794781800000}`, false, `source "" is not in from, to or passthrough`},
+		{"rfc3339 ts", "new", `{"type":"order_created","ts":"2026-11-15T22:30:00Z"}`, true, ""},
 		{"bad ts", "old", `{"type":"order_created","ts":"yesterday"}`, false, "neither epoch ms nor RFC 3339"},
 		{"missing ts", "old", `{"type":"order_created"}`, false, "unsupported type"},
 	}

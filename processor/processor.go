@@ -56,7 +56,7 @@ type processor struct {
 	timestamp *bloblang.Executor
 	eventType *bloblang.Executor // nil when event_type is not set
 	routed    *service.MetricCounter
-	errors    *service.MetricCounter
+	errored   *service.MetricCounter
 }
 
 // Register adds the event_time_cutover processor to env.
@@ -101,11 +101,11 @@ func (p *processor) record(outcome cutover.Outcome, group, source, eventType str
 	case cutover.Served, cutover.NotServed:
 		p.routed.Incr(1, group, source, eventType, strconv.FormatBool(outcome == cutover.Served))
 	case cutover.UnknownSource:
-		p.errors.Incr(1, "unknown_source")
+		p.errored.Incr(1, "unknown_source")
 	case cutover.InvalidTS:
-		p.errors.Incr(1, "invalid_ts")
+		p.errored.Incr(1, "invalid_ts")
 	case cutover.UnknownEventType:
-		p.errors.Incr(1, "unknown_event_type")
+		p.errored.Incr(1, "unknown_event_type")
 	}
 }
 
@@ -151,6 +151,10 @@ func queryText(msg *service.Message, mapping *bloblang.Executor) string {
 	if err != nil || res == nil {
 		return ""
 	}
+	// A missing value comes back as null; treat it as no value, not the text "null".
+	if v, err := res.AsStructured(); err == nil && v == nil {
+		return ""
+	}
 	b, err := res.AsBytes()
 	if err != nil {
 		return ""
@@ -182,8 +186,8 @@ func build(conf *service.ParsedConfig, res *service.Resources) (*processor, erro
 		return nil, err
 	}
 	p := &processor{
-		routed: res.Metrics().NewCounter("cutover_routed", "group", "source", "event_type", "served"),
-		errors: res.Metrics().NewCounter("cutover_errors", "reason"),
+		routed:  res.Metrics().NewCounter("cutover_routed", "group", "source", "event_type", "served"),
+		errored: res.Metrics().NewCounter("cutover_errors", "reason"),
 	}
 	if p.router, err = cutover.New(cfg); err != nil {
 		return nil, err

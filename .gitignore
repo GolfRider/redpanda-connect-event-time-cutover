@@ -1,0 +1,24 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/redpanda-connect-cutover
+/cutover-switch
+
+# Test output
+*.test
+*.out
+coverage.*
+
+# Go workspace
+go.work
+go.work.sum
+
+# Env files
+.env
+
+# IDE
+.idea/
+.vscode/

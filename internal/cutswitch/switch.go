@@ -41,10 +41,10 @@ func Parse(s string) (Switch, error) {
 	for _, raw := range strings.Split(s, ",") {
 		raw = strings.TrimSpace(raw)
 		cut, err := parseCut(raw)
-		if err == nil {
-			err = checkOrder(cuts, cut)
-		}
 		if err != nil {
+			return Switch{}, fmt.Errorf("parse cut %q: %w", raw, err)
+		}
+		if err := checkOrder(cuts, cut); err != nil {
 			return Switch{}, fmt.Errorf("parse cut %q: %w", raw, err)
 		}
 		cuts = append(cuts, cut)
@@ -76,7 +76,7 @@ func parseCut(raw string) (Cut, error) {
 	if err != nil {
 		return Cut{}, err
 	}
-	// A cut outside the event ts range (SPEC section 6) could never match an event.
+	// Event timestamps must fall in this range too, so a cut outside it could never match an event.
 	if ms < 1e12 || ms >= 1e13 {
 		return Cut{}, fmt.Errorf("time %q is outside 2001-09-09 .. 2286-11-20", at)
 	}
@@ -146,7 +146,8 @@ func parseWallClock(s string) (int64, error) {
 	_, before := t.Add(-24 * time.Hour).Zone()
 	_, after := t.Add(24 * time.Hour).Zone()
 	dstShift := time.Duration(after-before) * time.Second
-	if dstShift != 0 && (t.Add(dstShift).Format(layout) == written || t.Add(-dstShift).Format(layout) == written) {
+	earlier, later := t.Add(-dstShift).Format(layout), t.Add(dstShift).Format(layout)
+	if dstShift != 0 && (earlier == written || later == written) {
 		return 0, fmt.Errorf("time %q occurs twice when daylight saving ends", s)
 	}
 	return t.UnixMilli(), nil
@@ -169,7 +170,7 @@ func location(zone string) (*time.Location, error) {
 		zone = "America/New_York"
 	}
 	if !strings.Contains(zone, "/") || strings.HasPrefix(zone, "Etc/") {
-		return nil, fmt.Errorf("unknown zone %q, want UTC, GMT, PT, MT, CT, ET or an IANA name like America/Los_Angeles", zone)
+		return nil, fmt.Errorf("unknown zone %q, want UTC, GMT, PT, MT, CT, ET or an IANA name", zone)
 	}
 	loc, err := time.LoadLocation(zone)
 	if err != nil {

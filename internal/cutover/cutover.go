@@ -45,7 +45,7 @@ const (
 type GroupInfo struct {
 	Name   string
 	Events []string
-	Cuts   []cutswitch.Cut
+	Switch cutswitch.Switch
 }
 
 // Router decides, per message, whether to serve it.
@@ -141,7 +141,7 @@ func newGroups(groups []Group) (map[string]group, []GroupInfo, error) {
 			}
 			byEvent[ev] = group{name: g.Name, sw: sw}
 		}
-		infos = append(infos, GroupInfo{Name: g.Name, Events: g.Events, Cuts: sw.Cuts()})
+		infos = append(infos, GroupInfo{Name: g.Name, Events: g.Events, Switch: sw})
 	}
 	return byEvent, infos, nil
 }

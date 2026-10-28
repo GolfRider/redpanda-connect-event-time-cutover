@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"math/rand/v2"
-	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -212,12 +212,16 @@ func TestGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []GroupInfo{
-		{"orders", []string{"order_created", "order_shipped"}, []cutswitch.Cut{{Lane: cutswitch.From}, {Lane: cutswitch.To, At: 1794781800000}}},
-		{"rest", []string{"*"}, []cutswitch.Cut{{Lane: cutswitch.From}}},
+	got := r.Groups()
+	if len(got) != 2 || got[0].Name != "orders" || got[1].Name != "rest" {
+		t.Fatalf("Groups() = %v, want orders then rest", got)
 	}
-	if got := r.Groups(); !reflect.DeepEqual(got, want) {
-		t.Errorf("Groups() = %v, want %v", got, want)
+	if !slices.Equal(got[0].Events, []string{"order_created", "order_shipped"}) {
+		t.Errorf("orders events = %v", got[0].Events)
+	}
+	wantCuts := []cutswitch.Cut{{Lane: cutswitch.From}, {Lane: cutswitch.To, At: 1794781800000}}
+	if !slices.Equal(got[0].Switch.Cuts(), wantCuts) {
+		t.Errorf("orders cuts = %v, want %v", got[0].Switch.Cuts(), wantCuts)
 	}
 
 	simple, err := New(Config{Switch: "FROM@0", From: []string{"old"}, To: []string{"new"}})

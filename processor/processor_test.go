@@ -1,8 +1,10 @@
 package processor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -104,5 +106,35 @@ event_type: this.type
 func TestRegister(t *testing.T) {
 	if err := Register(service.NewEmptyEnvironment()); err != nil {
 		t.Fatalf("Register() error: %v", err)
+	}
+}
+
+func TestStartupLog(t *testing.T) {
+	const common = "from: [old]\nto: [new]\ntimestamp: this.ts\n"
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{"simple form", "switch: FROM@0,TO@1000000000000\n" + common,
+			`event_time_cutover: one switch for all events: cuts=[FROM@0, TO@1000000000000 (2001-09-09T01:46:40Z)] owner now=to`},
+		{"group form", "cutovers: [{name: orders, events: [order_created], switch: FROM@0}]\nevent_type: this.type\n" + common,
+			`event_time_cutover: group \"orders\" events=[order_created]: cuts=[FROM@0] owner now=from`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := service.NewLoggerFromSlog(slog.New(slog.NewTextHandler(&buf, nil)))
+			conf, err := spec().ParseYAML(tt.yaml, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := newProcessor(conf, service.MockResources(service.MockResourcesOptUseLogger(logger))); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(buf.String(), tt.want) {
+				t.Errorf("log = %s\nwant it to contain %s", buf.String(), tt.want)
+			}
+		})
 	}
 }

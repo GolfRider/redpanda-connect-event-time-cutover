@@ -2,7 +2,9 @@
 package processor
 
 import (
+	"context"
 	"errors"
+	"fmt"
 
 	"github.com/redpanda-data/benthos/v4/public/bloblang"
 	"github.com/redpanda-data/benthos/v4/public/service"
@@ -51,7 +53,75 @@ type processor struct {
 	eventType *bloblang.Executor // nil when event_type is not set
 }
 
-func newProcessor(conf *service.ParsedConfig, _ *service.Resources) (*processor, error) {
+// Register adds the event_time_cutover processor to env.
+func Register(env *service.Environment) error {
+	return env.RegisterProcessor("event_time_cutover", spec(), newProcessor)
+}
+
+// newProcessor prefixes startup errors so they stand out among other components.
+func newProcessor(conf *service.ParsedConfig, _ *service.Resources) (service.Processor, error) {
+	p, err := build(conf)
+	if err != nil {
+		return nil, fmt.Errorf("event_time_cutover: %w", err)
+	}
+	return p, nil
+}
+
+// Process keeps or drops one message. A returned error keeps the message and
+// marks it errored, so the usual errored() routing can send it to a DLQ.
+func (p *processor) Process(_ context.Context, msg *service.Message) (service.MessageBatch, error) {
+	eventType := ""
+	if p.eventType != nil {
+		eventType = queryText(msg, p.eventType)
+	}
+	outcome, _, err := p.router.Decide(queryText(msg, p.source), queryTimestamp(msg, p.timestamp), eventType)
+	if err != nil {
+		return nil, err
+	}
+	if outcome == cutover.NotServed {
+		return nil, nil
+	}
+	return service.MessageBatch{msg}, nil
+}
+
+// Close has nothing to release.
+func (p *processor) Close(context.Context) error {
+	return nil
+}
+
+// queryText runs a mapping that yields text, such as a topic name. A failed
+// mapping gives "", which Decide reports as an unknown source.
+func queryText(msg *service.Message, mapping *bloblang.Executor) string {
+	res, err := msg.BloblangQuery(mapping)
+	if err != nil || res == nil {
+		return ""
+	}
+	b, err := res.AsBytes()
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// queryTimestamp runs the timestamp mapping. Numbers come back as structured
+// values; strings come back as raw bytes. A failed mapping gives nil, which
+// Decide reports as an invalid ts.
+func queryTimestamp(msg *service.Message, mapping *bloblang.Executor) any {
+	res, err := msg.BloblangQuery(mapping)
+	if err != nil || res == nil {
+		return nil
+	}
+	if v, err := res.AsStructured(); err == nil {
+		return v
+	}
+	if b, err := res.AsBytes(); err == nil {
+		return string(b)
+	}
+	return nil
+}
+
+// build reads the config and compiles the mappings.
+func build(conf *service.ParsedConfig) (*processor, error) {
 	cfg, err := routerConfig(conf)
 	if err != nil {
 		return nil, err

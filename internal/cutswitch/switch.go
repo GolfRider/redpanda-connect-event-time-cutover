@@ -69,12 +69,15 @@ func parseCut(raw string) (Cut, error) {
 	default:
 		return Cut{}, fmt.Errorf("unknown lane %q, want FROM or TO", keyword)
 	}
+	if at == "0" {
+		return Cut{Lane: lane, At: 0}, nil
+	}
 	ms, err := parseTime(at)
 	if err != nil {
 		return Cut{}, err
 	}
 	// A cut outside the event ts range (SPEC section 6) could never match an event.
-	if ms != 0 && (ms < 1e12 || ms >= 1e13) {
+	if ms < 1e12 || ms >= 1e13 {
 		return Cut{}, fmt.Errorf("time %q is outside 2001-09-09 .. 2286-11-20", at)
 	}
 	return Cut{Lane: lane, At: ms}, nil
@@ -101,9 +104,6 @@ func checkOrder(cuts []Cut, next Cut) error {
 // parseTime returns epoch ms. Every accepted form carries its zone, so the
 // result never depends on the time zone of the pod.
 func parseTime(s string) (int64, error) {
-	if s == "0" {
-		return 0, nil
-	}
 	if s != "" && strings.Trim(s, "0123456789") == "" {
 		// 13 digits catches times written in seconds instead of milliseconds.
 		if len(s) != 13 {

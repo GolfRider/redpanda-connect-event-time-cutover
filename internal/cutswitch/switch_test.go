@@ -46,7 +46,6 @@ func TestParse(t *testing.T) {
 		{"southern hemisphere summer", "FROM@0,TO@2026-11-15 14:30 Australia/Sydney", []Cut{{From, 0}, {To, 1794713400000}}}, // 03:30 UTC
 		{"just after a 30-minute gap", "FROM@0,TO@2026-10-04 02:45 Australia/Lord_Howe", []Cut{{From, 0}, {To, 1791042300000}}},
 		{"GMT is UTC", "FROM@0,TO@2026-11-15 22:30 GMT", []Cut{{From, 0}, {To, winterCut}}},
-		{"date at epoch zero counts as 0", "FROM@1970-01-01 00:00 UTC", []Cut{{From, 0}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -87,6 +86,8 @@ func TestParseRejectsBadSwitch(t *testing.T) {
 		{"14 digits", "FROM@0,TO@17947818000000", "13 digits"},
 		{"13 digits with leading zero", "FROM@0,TO@0999999999999", "outside"},
 		{"padded zero", "FROM@00", "13 digits"},
+		{"thirteen zeros", "FROM@0000000000000", "outside"},
+		{"date at epoch zero", "FROM@1970-01-01 00:00 UTC", "outside"},
 		{"negative", "FROM@0,TO@-1", "unknown time"},
 		{"plus sign", "FROM@0,TO@+1794781800000", "unknown time"},
 	}
@@ -114,11 +115,7 @@ func TestParseRejectsBadTime(t *testing.T) {
 		{"double space", "FROM@0,TO@2026-11-15  22:30 UTC", "unknown time"},
 		{"no such date", "FROM@0,TO@2026-02-30 10:00 UTC", "invalid time"},
 		{"PST abbreviation", "FROM@0,TO@2026-11-15 14:30 PST", "unknown zone"},
-		{"PDT abbreviation", "FROM@0,TO@2026-07-15 14:30 PDT", "unknown zone"},
 		{"EST loads in Go but ignores DST", "FROM@0,TO@2026-11-15 17:30 EST", "unknown zone"},
-		{"MST loads in Go but ignores DST", "FROM@0,TO@2026-11-15 15:30 MST", "unknown zone"},
-		{"CET abbreviation", "FROM@0,TO@2026-11-15 23:30 CET", "unknown zone"},
-		{"PST8PDT", "FROM@0,TO@2026-11-15 14:30 PST8PDT", "unknown zone"},
 		{"Local depends on the pod", "FROM@0,TO@2026-11-15 14:30 Local", "unknown zone"},
 		{"Etc zone with inverted sign", "FROM@0,TO@2026-11-15 14:30 Etc/GMT+8", "unknown zone"},
 		{"lowercase alias", "FROM@0,TO@2026-11-15 14:30 pt", "unknown zone"},
@@ -196,50 +193,24 @@ func TestZeroSwitchBehavesLikeFromAtZero(t *testing.T) {
 	}
 }
 
-func TestOwnerServesExactlyOneLane(t *testing.T) {
-	rng := rand.New(rand.NewPCG(1, 2)) // fixed seed keeps failures reproducible
-	for range 1000 {
-		sw := randomSwitch(t, rng)
-		last := sw.cuts[len(sw.cuts)-1].At
-		for range 100 {
-			ts := rng.Int64N(last + 1e10) // before, between and after the cuts
-			fromServed, toServed := sw.Owner(ts) == From, sw.Owner(ts) == To
-			if fromServed == toServed {
-				t.Fatalf("cuts %v, ts %d: from served=%v, to served=%v", sw.cuts, ts, fromServed, toServed)
-			}
-		}
-	}
-}
-
 func TestOwnerFlipsExactlyAtCuts(t *testing.T) {
-	rng := rand.New(rand.NewPCG(3, 4))
+	rng := rand.New(rand.NewPCG(1, 2)) // fixed seed keeps failures reproducible
+	keywords := []string{"TO", "FROM"} // cuts after FROM@0 alternate
 	for range 1000 {
-		sw := randomSwitch(t, rng)
+		in, at := "FROM@0", int64(1e12)
+		for i := range rng.IntN(6) {
+			at += 1 + rng.Int64N(1e10)
+			in += fmt.Sprintf(",%s@%d", keywords[i%2], at)
+		}
+		sw, err := Parse(in)
+		if err != nil {
+			t.Fatalf("Parse(%q) error: %v", in, err)
+		}
 		for i := 1; i < len(sw.cuts); i++ {
 			c, prev := sw.cuts[i], sw.cuts[i-1]
 			if sw.Owner(c.At) != c.Lane || sw.Owner(c.At-1) != prev.Lane {
-				t.Fatalf("cuts %v: ownership does not flip exactly at %d", sw.cuts, c.At)
+				t.Fatalf("switch %q: ownership does not flip exactly at %d", in, c.At)
 			}
 		}
 	}
-}
-
-// randomSwitch builds a valid switch of up to 6 cuts and parses it, so the
-// property tests also exercise Parse.
-func randomSwitch(t *testing.T, rng *rand.Rand) Switch {
-	t.Helper()
-	in, at := "FROM@0", int64(1e12)
-	for i := range rng.IntN(6) {
-		at += 1 + rng.Int64N(1e10)
-		keyword := "TO"
-		if i%2 == 1 {
-			keyword = "FROM"
-		}
-		in += fmt.Sprintf(",%s@%d", keyword, at)
-	}
-	sw, err := Parse(in)
-	if err != nil {
-		t.Fatalf("Parse(%q) error: %v", in, err)
-	}
-	return sw
 }

@@ -89,7 +89,7 @@ ALIAS  := "PT" | "MT" | "CT" | "ET"
   offset 0 without an error. No 12-hour clock (am/pm mistakes shift the cut
   by 12 hours).
 - Normalize every TIME to epoch ms at parse time.
-- Every non-zero TIME, in any form, must fall in [1e12, 1e13)
+- Every TIME other than the literal `0`, in any form, must fall in [1e12, 1e13)
   (2001-09-09 .. 2286-11-20), the event ts range of section 6. A cut outside
   it could never match a valid event, so it can only be a typo.
 - Surrounding whitespace around cuts is allowed and trimmed. Keywords are
@@ -324,7 +324,9 @@ pause is acceptable (drain, then switch); the data is state, not events
 ## 16. Milestones
 
 - **M1** `cutswitch` package + tests + property test.
-- **M2** `cutover` decision core + config validation + tests.
+- **M2a** `cutover` decision core + config validation + tests, simple form
+  (one `switch`) only.
+- **M2b** groups: `cutovers`, `event_type`, `unknown_event_type`.
 - **M3** processor glue, metrics, startup logs, processor tests.
 - **M4** custom binary, examples, docker-compose end-to-end.
 - **M5** `cutover-switch` tool, README.

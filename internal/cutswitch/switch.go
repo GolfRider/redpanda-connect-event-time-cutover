@@ -4,6 +4,7 @@ package cutswitch
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -191,4 +192,17 @@ func (s Switch) Owner(ts int64) Lane {
 		owner = c.Lane
 	}
 	return owner
+}
+
+// Cuts returns a copy of the cut history, oldest first.
+func (s Switch) Cuts() []Cut {
+	return slices.Clone(s.cuts)
+}
+
+// String returns "from" or "to", as used in logs and metric labels.
+func (l Lane) String() string {
+	if l == To {
+		return "to"
+	}
+	return "from"
 }

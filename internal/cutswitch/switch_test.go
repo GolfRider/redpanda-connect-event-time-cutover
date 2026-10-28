@@ -214,3 +214,25 @@ func TestOwnerFlipsExactlyAtCuts(t *testing.T) {
 		}
 	}
 }
+
+func TestCuts(t *testing.T) {
+	sw, err := Parse("FROM@0,TO@1794781800000,FROM@1794800000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Cut{{From, 0}, {To, 1794781800000}, {From, 1794800000000}}
+	got := sw.Cuts()
+	if !slices.Equal(got, want) {
+		t.Fatalf("Cuts() = %v, want %v", got, want)
+	}
+	got[1].Lane = From // callers must not be able to change the switch
+	if sw.Owner(1794781800000) != To {
+		t.Error("changing the returned cuts changed the switch")
+	}
+}
+
+func TestLaneString(t *testing.T) {
+	if From.String() != "from" || To.String() != "to" {
+		t.Errorf("got %q and %q, want \"from\" and \"to\"", From, To)
+	}
+}

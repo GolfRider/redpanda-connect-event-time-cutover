@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"time"
 
@@ -40,9 +41,17 @@ const (
 	UnknownEventType                // keep and mark errored
 )
 
+// GroupInfo describes one group for the startup log and the cut_info metric.
+type GroupInfo struct {
+	Name   string
+	Events []string
+	Cuts   []cutswitch.Cut
+}
+
 // Router decides, per message, whether to serve it.
 type Router struct {
 	groups      map[string]group          // event type -> group; "*" is the catch-all
+	infos       []GroupInfo               // in config order
 	lanes       map[string]cutswitch.Lane // from/to sources
 	passthrough map[string]bool
 }
@@ -58,9 +67,13 @@ func New(cfg Config) (*Router, error) {
 		return nil, errors.New("set exactly one of switch or cutovers")
 	}
 	if cfg.Switch != "" {
+		// Report errors against the switch the user wrote, not the implicit group.
+		if _, err := cutswitch.Parse(cfg.Switch); err != nil {
+			return nil, fmt.Errorf("switch: %w", err)
+		}
 		cfg.Groups = []Group{{Name: "default", Events: []string{"*"}, Switch: cfg.Switch}}
 	}
-	groups, err := newGroups(cfg.Groups)
+	groups, infos, err := newGroups(cfg.Groups)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +81,7 @@ func New(cfg Config) (*Router, error) {
 	if _, star := groups["*"]; !cfg.HasEventType && (len(groups) != 1 || !star) {
 		return nil, errors.New("event_type must be set when a group lists event types")
 	}
-	r := &Router{groups: groups}
+	r := &Router{groups: groups, infos: infos}
 	if err := r.setSources(cfg.From, cfg.To, cfg.Passthrough); err != nil {
 		return nil, err
 	}
@@ -105,30 +118,37 @@ func (r *Router) setSources(from, to, passthrough []string) error {
 	return nil
 }
 
-// newGroups validates the groups and indexes them by event type.
-func newGroups(groups []Group) (map[string]group, error) {
+// newGroups validates the groups, indexes them by event type and describes them.
+func newGroups(groups []Group) (map[string]group, []GroupInfo, error) {
 	byEvent := map[string]group{}
 	names := map[string]bool{}
+	var infos []GroupInfo
 	for _, g := range groups {
 		if g.Name == "" || names[g.Name] {
-			return nil, fmt.Errorf("group %q: name is empty or duplicated", g.Name)
+			return nil, nil, fmt.Errorf("group %q: name is empty or duplicated", g.Name)
 		}
 		names[g.Name] = true
 		if len(g.Events) == 0 {
-			return nil, fmt.Errorf("group %q has no events", g.Name)
+			return nil, nil, fmt.Errorf("group %q has no events", g.Name)
 		}
 		sw, err := cutswitch.Parse(g.Switch)
 		if err != nil {
-			return nil, fmt.Errorf("group %q: switch: %w", g.Name, err)
+			return nil, nil, fmt.Errorf("group %q: switch: %w", g.Name, err)
 		}
 		for _, ev := range g.Events {
 			if _, dup := byEvent[ev]; dup {
-				return nil, fmt.Errorf("event type %q is in more than one group", ev)
+				return nil, nil, fmt.Errorf("event type %q is in more than one group", ev)
 			}
 			byEvent[ev] = group{name: g.Name, sw: sw}
 		}
+		infos = append(infos, GroupInfo{Name: g.Name, Events: g.Events, Cuts: sw.Cuts()})
 	}
-	return byEvent, nil
+	return byEvent, infos, nil
+}
+
+// Groups describes every group, in config order.
+func (r *Router) Groups() []GroupInfo {
+	return slices.Clone(r.infos)
 }
 
 // Decide checks the source, then the ts, then the event type, then ownership.

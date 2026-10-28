@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"math"
 	"math/rand/v2"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutswitch"
 )
 
 func TestNew(t *testing.T) {
@@ -21,7 +24,7 @@ func TestNew(t *testing.T) {
 		{"simple form without passthrough", Config{Switch: "FROM@0", From: from, To: to}, ""},
 		{"groups", Config{Groups: []Group{orders, rest}, From: from, To: to, HasEventType: true}, ""},
 		{"lone * group needs no event_type", Config{Groups: []Group{rest}, From: from, To: to}, ""},
-		{"invalid switch", Config{Switch: "TO@0", From: from, To: to}, `group "default": switch:`},
+		{"invalid switch", Config{Switch: "TO@0", From: from, To: to}, `switch: parse cut "TO@0": first cut must be FROM@0`},
 		{"invalid group switch", Config{Groups: []Group{{Name: "orders", Events: []string{"*"}, Switch: "TO@0"}}, From: from, To: to}, `group "orders": switch:`},
 		{"neither switch nor cutovers", Config{From: from, To: to}, "exactly one of switch or cutovers"},
 		{"both switch and cutovers", Config{Switch: "FROM@0", Groups: []Group{rest}, From: from, To: to}, "exactly one of switch or cutovers"},
@@ -195,5 +198,33 @@ func TestDecideServesExactlyOneCopyPerGroup(t *testing.T) {
 				t.Fatalf("ts %d, %s: old=%v new=%v, want exactly one Served", ts, eventType, oldOut, newOut)
 			}
 		}
+	}
+}
+
+func TestGroups(t *testing.T) {
+	r, err := New(Config{
+		Groups: []Group{
+			{Name: "orders", Events: []string{"order_created", "order_shipped"}, Switch: "FROM@0,TO@1794781800000"},
+			{Name: "rest", Events: []string{"*"}, Switch: "FROM@0"},
+		},
+		From: []string{"old"}, To: []string{"new"}, HasEventType: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []GroupInfo{
+		{"orders", []string{"order_created", "order_shipped"}, []cutswitch.Cut{{Lane: cutswitch.From}, {Lane: cutswitch.To, At: 1794781800000}}},
+		{"rest", []string{"*"}, []cutswitch.Cut{{Lane: cutswitch.From}}},
+	}
+	if got := r.Groups(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Groups() = %v, want %v", got, want)
+	}
+
+	simple, err := New(Config{Switch: "FROM@0", From: []string{"old"}, To: []string{"new"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := simple.Groups(); len(got) != 1 || got[0].Name != "default" || got[0].Events[0] != "*" {
+		t.Errorf("simple form Groups() = %v, want one \"default\" group for \"*\"", got)
 	}
 }

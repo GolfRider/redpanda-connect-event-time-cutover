@@ -173,7 +173,7 @@ Parse with care for int64 vs uint64; do not go through float64 for integers.
 ## 7. Message handling (decision order)
 
 1. Evaluate `source`. Find its lane.
-    - `passthrough` -> keep message unchanged, count, done.
+    - `passthrough` -> keep message unchanged, done.
     - no lane -> mark error `unknown_source`, keep message, done.
 2. Evaluate `timestamp`. Invalid -> mark error `invalid_ts`, keep, done.
 3. Find group: by `event_type` if groups need it, else the `"*"` group.

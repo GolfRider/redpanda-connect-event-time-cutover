@@ -12,10 +12,19 @@ import (
 	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutswitch"
 )
 
-// Config is the simple form: one switch for every event.
+// Config is the processor config: either Switch (simple form) or Groups.
 type Config struct {
 	Switch                string
+	Groups                []Group
 	From, To, Passthrough []string
+	HasEventType          bool // the event_type mapping is configured
+}
+
+// Group is one cutovers entry: event types that share a switch.
+type Group struct {
+	Name   string
+	Events []string // "*" matches event types no other group lists
+	Switch string
 }
 
 // Outcome is what Decide concluded for one message.
@@ -23,25 +32,37 @@ type Outcome int
 
 // Outcomes of Decide.
 const (
-	Served        Outcome = iota // keep: its lane owns the ts
-	NotServed                    // drop: the other lane owns the ts
-	Passthrough                  // keep: source is not migrating
-	UnknownSource                // keep and mark errored
-	InvalidTS                    // keep and mark errored
+	Served           Outcome = iota // keep: its lane owns the ts
+	NotServed                       // drop: the other lane owns the ts
+	Passthrough                     // keep: source is not migrating
+	UnknownSource                   // keep and mark errored
+	InvalidTS                       // keep and mark errored
+	UnknownEventType                // keep and mark errored
 )
 
 // Router decides, per message, whether to serve it.
 type Router struct {
-	sw          cutswitch.Switch
+	groups      map[string]group          // event type -> group; "*" is the catch-all
 	lanes       map[string]cutswitch.Lane // from/to sources
 	passthrough map[string]bool
 }
 
+type group struct {
+	name string
+	sw   cutswitch.Switch
+}
+
 // New validates cfg and builds a Router. Any error must stop startup.
 func New(cfg Config) (*Router, error) {
-	sw, err := cutswitch.Parse(cfg.Switch)
+	if (cfg.Switch == "") == (len(cfg.Groups) == 0) {
+		return nil, errors.New("set exactly one of switch or cutovers")
+	}
+	if cfg.Switch != "" {
+		cfg.Groups = []Group{{Name: "default", Events: []string{"*"}, Switch: cfg.Switch}}
+	}
+	groups, err := newGroups(cfg.Groups, cfg.HasEventType)
 	if err != nil {
-		return nil, fmt.Errorf("switch: %w", err)
+		return nil, err
 	}
 	if len(cfg.From) == 0 || len(cfg.To) == 0 {
 		return nil, errors.New("from and to must each list at least one source")
@@ -57,7 +78,7 @@ func New(cfg Config) (*Router, error) {
 		}
 	}
 
-	r := &Router{sw: sw, lanes: map[string]cutswitch.Lane{}, passthrough: map[string]bool{}}
+	r := &Router{groups: groups, lanes: map[string]cutswitch.Lane{}, passthrough: map[string]bool{}}
 	for _, src := range cfg.From {
 		r.lanes[src] = cutswitch.From
 	}
@@ -70,23 +91,59 @@ func New(cfg Config) (*Router, error) {
 	return r, nil
 }
 
-// Decide follows SPEC section 7: source first, then ts, then ownership.
-func (r *Router) Decide(source string, ts any) (Outcome, error) {
+// newGroups validates the groups and indexes them by event type.
+func newGroups(groups []Group, hasEventType bool) (map[string]group, error) {
+	byEvent := map[string]group{}
+	names := map[string]bool{}
+	for _, g := range groups {
+		if g.Name == "" || names[g.Name] || len(g.Events) == 0 {
+			return nil, fmt.Errorf("group %q: name must be unique and non-empty, events non-empty", g.Name)
+		}
+		names[g.Name] = true
+		sw, err := cutswitch.Parse(g.Switch)
+		if err != nil {
+			return nil, fmt.Errorf("group %q: switch: %w", g.Name, err)
+		}
+		for _, ev := range g.Events {
+			if _, dup := byEvent[ev]; dup {
+				return nil, fmt.Errorf("event type %q is in more than one group", ev)
+			}
+			byEvent[ev] = group{name: g.Name, sw: sw}
+		}
+	}
+	// Without an event_type mapping every message looks the same, so only a lone "*" group works.
+	if _, star := byEvent["*"]; !hasEventType && (len(byEvent) != 1 || !star) {
+		return nil, errors.New("event_type must be set when a group lists event types")
+	}
+	return byEvent, nil
+}
+
+// Decide follows SPEC section 7: source, ts, event type, then ownership.
+// It returns the outcome, the group name (empty when no group applies) and,
+// for the errored outcomes, the reason.
+func (r *Router) Decide(source string, ts any, eventType string) (Outcome, string, error) {
 	if r.passthrough[source] {
-		return Passthrough, nil
+		return Passthrough, "", nil
 	}
 	lane, ok := r.lanes[source]
 	if !ok {
-		return UnknownSource, fmt.Errorf("source %q is not in from, to or passthrough", source)
+		return UnknownSource, "", fmt.Errorf("source %q is not in from, to or passthrough", source)
 	}
 	ms, err := parseTimestamp(ts)
 	if err != nil {
-		return InvalidTS, err
+		return InvalidTS, "", err
 	}
-	if r.sw.Owner(ms) == lane {
-		return Served, nil
+	g, ok := r.groups[eventType]
+	if !ok {
+		g, ok = r.groups["*"]
 	}
-	return NotServed, nil
+	if !ok {
+		return UnknownEventType, "", fmt.Errorf("event type %q matches no group", eventType)
+	}
+	if g.sw.Owner(ms) == lane {
+		return Served, g.name, nil
+	}
+	return NotServed, g.name, nil
 }
 
 // parseTimestamp reads the value of the timestamp mapping as epoch ms.

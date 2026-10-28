@@ -9,20 +9,33 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	from, to := []string{"old"}, []string{"new"}
+	orders := Group{Name: "orders", Events: []string{"order_created"}, Switch: "FROM@0"}
+	rest := Group{Name: "rest", Events: []string{"*"}, Switch: "FROM@0"}
 	tests := []struct {
 		name    string
 		cfg     Config
 		wantErr string // empty means valid
 	}{
-		{"valid", Config{Switch: "FROM@0", From: []string{"old"}, To: []string{"new"}, Passthrough: []string{"other"}}, ""},
-		{"valid without passthrough", Config{Switch: "FROM@0", From: []string{"old"}, To: []string{"new"}}, ""},
-		{"invalid switch", Config{Switch: "TO@0", From: []string{"old"}, To: []string{"new"}}, "switch:"},
-		{"empty switch", Config{From: []string{"old"}, To: []string{"new"}}, "switch:"},
-		{"no from", Config{Switch: "FROM@0", To: []string{"new"}}, "from and to"},
-		{"no to", Config{Switch: "FROM@0", From: []string{"old"}}, "from and to"},
+		{"simple form", Config{Switch: "FROM@0", From: from, To: to, Passthrough: []string{"other"}}, ""},
+		{"simple form without passthrough", Config{Switch: "FROM@0", From: from, To: to}, ""},
+		{"groups", Config{Groups: []Group{orders, rest}, From: from, To: to, HasEventType: true}, ""},
+		{"lone * group needs no event_type", Config{Groups: []Group{rest}, From: from, To: to}, ""},
+		{"invalid switch", Config{Switch: "TO@0", From: from, To: to}, `group "default": switch:`},
+		{"invalid group switch", Config{Groups: []Group{{Name: "orders", Events: []string{"*"}, Switch: "TO@0"}}, From: from, To: to}, `group "orders": switch:`},
+		{"neither switch nor cutovers", Config{From: from, To: to}, "exactly one of switch or cutovers"},
+		{"both switch and cutovers", Config{Switch: "FROM@0", Groups: []Group{rest}, From: from, To: to}, "exactly one of switch or cutovers"},
+		{"empty group name", Config{Groups: []Group{{Events: []string{"*"}, Switch: "FROM@0"}}, From: from, To: to}, "name must be unique"},
+		{"duplicate group name", Config{Groups: []Group{orders, {Name: "orders", Events: []string{"*"}, Switch: "FROM@0"}}, From: from, To: to, HasEventType: true}, "name must be unique"},
+		{"group without events", Config{Groups: []Group{{Name: "empty", Switch: "FROM@0"}}, From: from, To: to}, "events non-empty"},
+		{"event in two groups", Config{Groups: []Group{orders, {Name: "again", Events: []string{"order_created"}, Switch: "FROM@0"}}, From: from, To: to, HasEventType: true}, `"order_created" is in more than one group`},
+		{"two * groups", Config{Groups: []Group{rest, {Name: "rest2", Events: []string{"*"}, Switch: "FROM@0"}}, From: from, To: to}, `"*" is in more than one group`},
+		{"event types without event_type", Config{Groups: []Group{orders, rest}, From: from, To: to}, "event_type must be set"},
+		{"no from", Config{Switch: "FROM@0", To: to}, "from and to"},
+		{"no to", Config{Switch: "FROM@0", From: from}, "from and to"},
 		{"source in from and to", Config{Switch: "FROM@0", From: []string{"t"}, To: []string{"t"}}, `"t" is listed more than once`},
-		{"source in from and passthrough", Config{Switch: "FROM@0", From: []string{"old"}, To: []string{"new"}, Passthrough: []string{"old"}}, `"old" is listed more than once`},
-		{"duplicate within one list", Config{Switch: "FROM@0", From: []string{"old", "old"}, To: []string{"new"}}, `"old" is listed more than once`},
+		{"source in from and passthrough", Config{Switch: "FROM@0", From: from, To: to, Passthrough: from}, `"old" is listed more than once`},
+		{"duplicate within one list", Config{Switch: "FROM@0", From: []string{"old", "old"}, To: to}, `"old" is listed more than once`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -92,55 +105,95 @@ func TestParseTimestamp(t *testing.T) {
 
 func TestDecide(t *testing.T) {
 	const cutAt = 1794781800000
-	r, err := New(Config{Switch: "FROM@0,TO@1794781800000", From: []string{"old"}, To: []string{"new"}, Passthrough: []string{"other"}})
+	r, err := New(Config{
+		Groups: []Group{
+			{Name: "orders", Events: []string{"order_created"}, Switch: "FROM@0,TO@1794781800000"},
+			{Name: "rest", Events: []string{"*"}, Switch: "FROM@0"},
+		},
+		From: []string{"old"}, To: []string{"new"}, Passthrough: []string{"other"}, HasEventType: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		name    string
-		source  string
-		ts      any
-		want    Outcome
-		wantErr string // empty means no error
+		name      string
+		source    string
+		ts        any
+		eventType string
+		want      Outcome
+		wantGroup string
+		wantErr   string // empty means no error
 	}{
-		{"passthrough ignores ts", "other", nil, Passthrough, ""},
-		{"unknown source", "elsewhere", int64(cutAt), UnknownSource, "not in from, to or passthrough"},
-		{"empty source", "", int64(cutAt), UnknownSource, "not in from, to or passthrough"},
-		{"source checked before ts", "elsewhere", nil, UnknownSource, "not in from, to or passthrough"},
-		{"old before cut is served", "old", int64(cutAt - 1), Served, ""},
-		{"new before cut is dropped", "new", int64(cutAt - 1), NotServed, ""},
-		{"old at cut is dropped", "old", int64(cutAt), NotServed, ""},
-		{"new at cut is served", "new", int64(cutAt), Served, ""},
-		{"invalid ts", "old", int64(1794781800), InvalidTS, "outside"},
+		{"passthrough ignores ts", "other", nil, "order_created", Passthrough, "", ""},
+		{"unknown source", "elsewhere", int64(cutAt), "order_created", UnknownSource, "", "not in from, to or passthrough"},
+		{"empty source", "", int64(cutAt), "order_created", UnknownSource, "", "not in from, to or passthrough"},
+		{"source checked before ts", "elsewhere", nil, "order_created", UnknownSource, "", "not in from, to or passthrough"},
+		{"invalid ts", "old", int64(1794781800), "order_created", InvalidTS, "", "outside"},
+		{"old before cut is served", "old", int64(cutAt - 1), "order_created", Served, "orders", ""},
+		{"new before cut is dropped", "new", int64(cutAt - 1), "order_created", NotServed, "orders", ""},
+		{"old at cut is dropped", "old", int64(cutAt), "order_created", NotServed, "orders", ""},
+		{"new at cut is served", "new", int64(cutAt), "order_created", Served, "orders", ""},
+		{"other event type uses * group", "old", int64(cutAt), "payment", Served, "rest", ""},
+		{"same ts, other group not cut yet", "new", int64(cutAt), "payment", NotServed, "rest", ""},
+		{"empty event type uses * group", "old", int64(cutAt), "", Served, "rest", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := r.Decide(tt.source, tt.ts)
-			if got != tt.want {
-				t.Errorf("Decide(%q, %v) = %v, want %v", tt.source, tt.ts, got, tt.want)
+			got, group, err := r.Decide(tt.source, tt.ts, tt.eventType)
+			if got != tt.want || group != tt.wantGroup {
+				t.Errorf("Decide() = %v, %q; want %v, %q", got, group, tt.want, tt.wantGroup)
 			}
 			if tt.wantErr == "" && err != nil {
-				t.Errorf("Decide(%q, %v) error: %v", tt.source, tt.ts, err)
+				t.Errorf("Decide() error: %v", err)
 			}
 			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
-				t.Errorf("Decide(%q, %v) error = %v, want it to contain %q", tt.source, tt.ts, err, tt.wantErr)
+				t.Errorf("Decide() error = %v, want it to contain %q", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestDecideServesExactlyOneCopy(t *testing.T) {
-	r, err := New(Config{Switch: "FROM@0,TO@1794781800000,FROM@1794800000000", From: []string{"old"}, To: []string{"new"}})
+func TestDecideGroupLookup(t *testing.T) {
+	simple, err := New(Config{Switch: "FROM@0", From: []string{"old"}, To: []string{"new"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, group, _ := simple.Decide("old", int64(1e12), ""); out != Served || group != "default" {
+		t.Errorf("simple form: Decide() = %v, %q; want Served, \"default\"", out, group)
+	}
+
+	noCatchAll, err := New(Config{
+		Groups: []Group{{Name: "orders", Events: []string{"order_created"}, Switch: "FROM@0"}},
+		From:   []string{"old"}, To: []string{"new"}, HasEventType: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _, err := noCatchAll.Decide("old", int64(1e12), "payment"); out != UnknownEventType || err == nil {
+		t.Errorf("no * group: Decide() = %v, %v; want UnknownEventType with error", out, err)
+	}
+}
+
+func TestDecideServesExactlyOneCopyPerGroup(t *testing.T) {
+	r, err := New(Config{
+		Groups: []Group{
+			{Name: "orders", Events: []string{"order_created"}, Switch: "FROM@0,TO@1794781800000,FROM@1794800000000"},
+			{Name: "rest", Events: []string{"*"}, Switch: "FROM@0,TO@1794790000000"},
+		},
+		From: []string{"old"}, To: []string{"new"}, HasEventType: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	rng := rand.New(rand.NewPCG(1, 2)) // fixed seed keeps failures reproducible
 	for range 10000 {
 		ts := 1e12 + rng.Int64N(9e12) // anywhere in the valid ts range
-		oldOut, _ := r.Decide("old", ts)
-		newOut, _ := r.Decide("new", ts)
-		if (oldOut == Served) == (newOut == Served) {
-			t.Fatalf("ts %d: old=%v new=%v, want exactly one Served", ts, oldOut, newOut)
+		for _, eventType := range []string{"order_created", "payment"} {
+			oldOut, _, _ := r.Decide("old", ts, eventType)
+			newOut, _, _ := r.Decide("new", ts, eventType)
+			if (oldOut == Served) == (newOut == Served) {
+				t.Fatalf("ts %d, %s: old=%v new=%v, want exactly one Served", ts, eventType, oldOut, newOut)
+			}
 		}
 	}
 }

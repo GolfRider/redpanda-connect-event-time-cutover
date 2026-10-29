@@ -239,3 +239,18 @@ func TestLaneString(t *testing.T) {
 		t.Errorf("got %q and %q, want \"from\" and \"to\"", From, To)
 	}
 }
+
+func TestCutString(t *testing.T) {
+	tests := []struct {
+		cut  Cut
+		want string
+	}{
+		{Cut{From, 0}, "FROM@0"},
+		{Cut{To, winterCut}, "TO@1794781800000"},
+	}
+	for _, tt := range tests {
+		if got := tt.cut.String(); got != tt.want {
+			t.Errorf("String() = %q, want %q", got, tt.want)
+		}
+	}
+}

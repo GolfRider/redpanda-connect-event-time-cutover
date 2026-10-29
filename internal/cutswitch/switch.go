@@ -197,6 +197,12 @@ func (s Switch) Cuts() []Cut {
 	return slices.Clone(s.cuts)
 }
 
+// String returns the cut as written in a switch, with the time in epoch ms,
+// e.g. "TO@1794781800000".
+func (c Cut) String() string {
+	return fmt.Sprintf("%s@%d", strings.ToUpper(c.Lane.String()), c.At)
+}
+
 // String returns "from" or "to", as used in logs and metric labels.
 func (l Lane) String() string {
 	if l == To {

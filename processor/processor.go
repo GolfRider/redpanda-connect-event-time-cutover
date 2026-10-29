@@ -148,7 +148,7 @@ func (p *processor) announce(res *service.Resources, simpleForm bool) {
 func describeCuts(cuts []cutswitch.Cut) string {
 	parts := make([]string, len(cuts))
 	for i, c := range cuts {
-		parts[i] = fmt.Sprintf("%s@%d", strings.ToUpper(c.Lane.String()), c.At)
+		parts[i] = c.String()
 		if c.At != 0 {
 			parts[i] += " (" + time.UnixMilli(c.At).UTC().Format(time.RFC3339) + ")"
 		}

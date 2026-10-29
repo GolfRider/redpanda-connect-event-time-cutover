@@ -25,42 +25,35 @@ func main() {
 // run returns the exit code: 0 ok, 1 invalid switch or failed check, 2 bad usage.
 // Local times are shown in now's location, so tests can fix both.
 func run(args []string, stdout, stderr io.Writer, now time.Time) int {
-	if len(args) == 1 && args[0] == "help" {
+	switch {
+	case len(args) == 1 && args[0] == "help":
 		fmt.Fprint(stdout, usage)
 		return 0
+	case len(args) == 2 && args[0] == "explain":
+		return explain(stdout, stderr, args[1], now.Location())
+	case len(args) >= 2 && args[0] == "check":
+		return check(stdout, stderr, args[1:], now)
 	}
-	if len(args) < 2 || (args[0] != "explain" && args[0] != "check") || (args[0] == "explain" && len(args) > 2) {
-		fmt.Fprint(stderr, usage)
-		return 2
-	}
-	sw, err := cutswitch.Parse(args[1])
+	fmt.Fprint(stderr, usage)
+	return 2
+}
+
+// explain prints each cut, then which lane owns each range of event time.
+func explain(stdout, stderr io.Writer, s string, local *time.Location) int {
+	sw, err := cutswitch.Parse(s)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if args[0] == "explain" {
-		explain(stdout, sw.Cuts(), now.Location())
+	cuts := sw.Cuts()
+	if len(cuts) == 1 {
+		fmt.Fprintln(stdout, "dry run: FROM owns every ts")
 		return 0
 	}
-	flags := flag.NewFlagSet("check", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	minLead := flags.Duration("min-lead", 0, "least time from now to the newest cut")
-	if err := flags.Parse(args[2:]); err != nil {
-		return 2
-	}
-	return check(stdout, stderr, sw.Cuts(), now, *minLead)
-}
-
-// explain prints each cut, then which lane owns each range of event time.
-func explain(out io.Writer, cuts []cutswitch.Cut, local *time.Location) {
-	if len(cuts) == 1 {
-		fmt.Fprintln(out, "dry run: FROM owns every ts")
-		return
-	}
-	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	for _, c := range cuts[1:] {
 		t := time.UnixMilli(c.At)
-		fmt.Fprintf(w, "%s\t%s\t%s\n", label(c), t.UTC().Format(time.RFC3339), t.In(local).Format("2006-01-02 15:04 MST"))
+		fmt.Fprintf(w, "%s\t%s\t%s\n", c, t.UTC().Format(time.RFC3339), t.In(local).Format("2006-01-02 15:04 MST"))
 	}
 	fmt.Fprintln(w)
 	for i, c := range cuts {
@@ -75,11 +68,25 @@ func explain(out io.Writer, cuts []cutswitch.Cut, local *time.Location) {
 		}
 	}
 	_ = w.Flush()
+	return 0
 }
 
 // check fails when the newest cut is too close: if the rollout is still going
 // at the cut, instances on the old switch disagree with those on the new one.
-func check(stdout, stderr io.Writer, cuts []cutswitch.Cut, now time.Time, minLead time.Duration) int {
+// args is the switch followed by flags.
+func check(stdout, stderr io.Writer, args []string, now time.Time) int {
+	sw, err := cutswitch.Parse(args[0])
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	flags := flag.NewFlagSet("check", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	minLead := flags.Duration("min-lead", 0, "least time from now to the newest cut")
+	if err := flags.Parse(args[1:]); err != nil {
+		return 2
+	}
+	cuts := sw.Cuts()
 	newest := cuts[len(cuts)-1]
 	if newest.At == 0 {
 		fmt.Fprintln(stdout, "ok: dry run, no cut to check")
@@ -87,19 +94,15 @@ func check(stdout, stderr io.Writer, cuts []cutswitch.Cut, now time.Time, minLea
 	}
 	lead := time.UnixMilli(newest.At).Sub(now).Round(time.Second)
 	if lead < 0 {
-		fmt.Fprintf(stderr, "fail: newest cut %s (%s) is %s in the past\n", label(newest), utc(newest.At), -lead)
+		fmt.Fprintf(stderr, "fail: newest cut %s (%s) is %s in the past\n", newest, utc(newest.At), -lead)
 		return 1
 	}
-	if lead < minLead {
-		fmt.Fprintf(stderr, "fail: newest cut %s (%s) is in %s, want at least %s\n", label(newest), utc(newest.At), lead, minLead)
+	if lead < *minLead {
+		fmt.Fprintf(stderr, "fail: newest cut %s (%s) is in %s, want at least %s\n", newest, utc(newest.At), lead, *minLead)
 		return 1
 	}
-	fmt.Fprintf(stdout, "ok: newest cut %s (%s) is in %s\n", label(newest), utc(newest.At), lead)
+	fmt.Fprintf(stdout, "ok: newest cut %s (%s) is in %s\n", newest, utc(newest.At), lead)
 	return 0
-}
-
-func label(c cutswitch.Cut) string {
-	return fmt.Sprintf("%s@%d", strings.ToUpper(c.Lane.String()), c.At)
 }
 
 func utc(ms int64) string {

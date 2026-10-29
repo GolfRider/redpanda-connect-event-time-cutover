@@ -22,6 +22,8 @@ output:
           redpanda:
             seed_brokers: [localhost:9092]
             topic: billing_dlq
+            metadata:
+              include_patterns: ["^error$"] # outputs write no headers unless asked
           processors:
             - mutation: meta error = error() # keep the reason with the message
       - output:

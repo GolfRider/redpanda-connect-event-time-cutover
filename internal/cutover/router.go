@@ -183,6 +183,8 @@ func (r *Router) Decide(source string, ts any, eventType string) (Outcome, strin
 func parseTimestamp(v any) (int64, error) {
 	var ms int64
 	switch val := v.(type) {
+	case nil:
+		return 0, errors.New("timestamp is missing")
 	case json.Number: // benthos decodes JSON numbers this way by default
 		return parseTimestamp(string(val))
 	case string:

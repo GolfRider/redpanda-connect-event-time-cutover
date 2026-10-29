@@ -69,7 +69,7 @@ func TestParseTimestamp(t *testing.T) {
 		{"rfc3339 fractional seconds", "2026-11-15T22:30:00.123Z", ts + 123, ""},
 		{"smallest in range", int64(1e12), 1e12, ""},
 		{"largest in range", int64(1e13 - 1), 1e13 - 1, ""},
-		{"missing", nil, 0, "unsupported type"},
+		{"missing", nil, 0, "timestamp is missing"},
 		{"bool", true, 0, "unsupported type"},
 		{"fractional float", 1794781800000.5, 0, "float timestamp"},
 		{"NaN", math.NaN(), 0, "float timestamp"},

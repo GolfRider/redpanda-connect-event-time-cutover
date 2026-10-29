@@ -90,7 +90,7 @@ event_type: this.type
 		{"missing topic", "", `{"type":"order_created","ts":1794781800000}`, false, `source "" is not in from, to or passthrough`},
 		{"rfc3339 ts", "new", `{"type":"order_created","ts":"2026-11-15T22:30:00Z"}`, true, ""},
 		{"bad ts", "old", `{"type":"order_created","ts":"yesterday"}`, false, "neither epoch ms nor RFC 3339"},
-		{"missing ts", "old", `{"type":"order_created"}`, false, "unsupported type"},
+		{"missing ts", "old", `{"type":"order_created"}`, false, "timestamp is missing"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

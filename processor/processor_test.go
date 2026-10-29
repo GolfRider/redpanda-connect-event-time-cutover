@@ -16,8 +16,10 @@ import (
 	_ "github.com/redpanda-data/connect/v4/public/components/pure"
 )
 
+// common holds the fields every config in these tests needs.
+const common = "from: [old]\nto: [new]\ntimestamp: this.ts\n"
+
 func TestNewProcessor(t *testing.T) {
-	const common = "from: [old]\nto: [new]\ntimestamp: this.ts\n"
 	tests := []struct {
 		name    string
 		yaml    string
@@ -116,7 +118,6 @@ func TestRegister(t *testing.T) {
 }
 
 func TestStartupLog(t *testing.T) {
-	const common = "from: [old]\nto: [new]\ntimestamp: this.ts\n"
 	tests := []struct {
 		name string
 		yaml string

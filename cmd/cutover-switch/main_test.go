@@ -21,6 +21,7 @@ func TestRun(t *testing.T) {
 		wantOut  string // substring of stdout or stderr
 	}{
 		{"help", []string{"help"}, 0, "usage:"},
+		{"--help", []string{"--help"}, 0, "usage:"},
 		{"no args", nil, 2, "usage:"},
 		{"unknown command", []string{"show", cut}, 2, "usage:"},
 		{"explain extra arg", []string{"explain", cut, "x"}, 2, "usage:"},

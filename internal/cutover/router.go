@@ -49,15 +49,10 @@ type GroupInfo struct {
 
 // Router decides, per message, whether to serve it.
 type Router struct {
-	groups      map[string]group // event type -> group; "*" is the catch-all
-	infos       []GroupInfo      // in config order
-	lanes       map[string]Lane  // from/to sources
+	groups      map[string]GroupInfo // event type -> group; "*" is the catch-all
+	infos       []GroupInfo          // in config order
+	lanes       map[string]Lane      // from/to sources
 	passthrough map[string]bool
-}
-
-type group struct {
-	name string
-	sw   Switch
 }
 
 // New validates cfg and builds a Router. Any error must stop startup.
@@ -118,8 +113,8 @@ func (r *Router) setSources(from, to, passthrough []string) error {
 }
 
 // newGroups validates the groups, indexes them by event type and describes them.
-func newGroups(groups []Group) (map[string]group, []GroupInfo, error) {
-	byEvent := map[string]group{}
+func newGroups(groups []Group) (map[string]GroupInfo, []GroupInfo, error) {
+	byEvent := map[string]GroupInfo{}
 	names := map[string]bool{}
 	var infos []GroupInfo
 	for _, g := range groups {
@@ -134,13 +129,14 @@ func newGroups(groups []Group) (map[string]group, []GroupInfo, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("group %q: switch: %w", g.Name, err)
 		}
+		info := GroupInfo{Name: g.Name, Events: g.Events, Switch: sw}
 		for _, ev := range g.Events {
 			if _, dup := byEvent[ev]; dup {
 				return nil, nil, fmt.Errorf("event type %q is in more than one group", ev)
 			}
-			byEvent[ev] = group{name: g.Name, sw: sw}
+			byEvent[ev] = info
 		}
-		infos = append(infos, GroupInfo{Name: g.Name, Events: g.Events, Switch: sw})
+		infos = append(infos, info)
 	}
 	return byEvent, infos, nil
 }
@@ -172,10 +168,10 @@ func (r *Router) Decide(source string, ts any, eventType string) (Outcome, strin
 	if !ok {
 		return UnknownEventType, "", fmt.Errorf("event type %q matches no group", eventType)
 	}
-	if g.sw.Owner(ms) == lane {
-		return Served, g.name, nil
+	if g.Switch.Owner(ms) == lane {
+		return Served, g.Name, nil
 	}
-	return NotServed, g.name, nil
+	return NotServed, g.Name, nil
 }
 
 // parseTimestamp reads the value of the timestamp mapping as epoch ms.

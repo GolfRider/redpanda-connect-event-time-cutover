@@ -26,7 +26,7 @@ func main() {
 // Local times are shown in now's location, so tests can fix both.
 func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 	switch {
-	case len(args) == 1 && args[0] == "help":
+	case len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help"):
 		fmt.Fprint(stdout, usage)
 		return 0
 	case len(args) == 2 && args[0] == "explain":

@@ -89,112 +89,6 @@ func newProcessor(conf *service.ParsedConfig, res *service.Resources) (service.P
 	return p, nil
 }
 
-// Process keeps or drops one message. A returned error keeps the message and
-// marks it errored, so the usual errored() routing can send it to a DLQ.
-func (p *processor) Process(_ context.Context, msg *service.Message) (service.MessageBatch, error) {
-	source := queryText(msg, p.source)
-	eventType := ""
-	if p.eventType != nil {
-		eventType = queryText(msg, p.eventType)
-	}
-	outcome, group, err := p.router.Decide(source, queryTimestamp(msg, p.timestamp), eventType)
-	p.record(outcome, group, source, eventType)
-	if err != nil {
-		return nil, err
-	}
-	if outcome == cutover.NotServed {
-		return nil, nil
-	}
-	return service.MessageBatch{msg}, nil
-}
-
-// record counts one decision. Passthrough messages are not counted.
-func (p *processor) record(outcome cutover.Outcome, group, source, eventType string) {
-	if p.eventType == nil {
-		eventType = "unknown"
-	}
-	switch outcome {
-	case cutover.Served, cutover.NotServed:
-		p.routed.Incr(1, group, source, eventType, strconv.FormatBool(outcome == cutover.Served))
-	case cutover.UnknownSource:
-		p.errored.Incr(1, "unknown_source")
-	case cutover.InvalidTS:
-		p.errored.Incr(1, "invalid_ts")
-	case cutover.UnknownEventType:
-		p.errored.Incr(1, "unknown_event_type")
-	}
-}
-
-// announce logs each group's switch and sets cut_info, so operators can check
-// that every instance runs the same switch.
-func (p *processor) announce(res *service.Resources, simpleForm bool) {
-	cutInfo := res.Metrics().NewGauge("cutover_cut_info", "group", "cut_ts", "owner")
-	now := time.Now().UnixMilli()
-	for _, g := range p.router.Groups() {
-		cuts := g.Switch.Cuts()
-		last := cuts[len(cuts)-1]
-		cutInfo.Set(1, g.Name, strconv.FormatInt(last.At, 10), last.Lane.String())
-
-		which := fmt.Sprintf("group %q events=%v", g.Name, g.Events)
-		if simpleForm {
-			which = "one switch for all events"
-		}
-		res.Logger().Infof("event_time_cutover: %s: cuts=[%s] owner now=%s", which, describeCuts(cuts), g.Switch.Owner(now))
-	}
-}
-
-// describeCuts formats cuts as "FROM@0, TO@1794781800000 (2026-11-15T22:30:00Z)".
-func describeCuts(cuts []cutover.Cut) string {
-	parts := make([]string, len(cuts))
-	for i, c := range cuts {
-		parts[i] = c.String()
-		if c.At != 0 {
-			parts[i] += " (" + time.UnixMilli(c.At).UTC().Format(time.RFC3339) + ")"
-		}
-	}
-	return strings.Join(parts, ", ")
-}
-
-// Close has nothing to release.
-func (p *processor) Close(context.Context) error {
-	return nil
-}
-
-// queryText runs a mapping that yields text, such as a topic name. A failed
-// mapping gives "", which Decide reports as an unknown source.
-func queryText(msg *service.Message, mapping *bloblang.Executor) string {
-	res, err := msg.BloblangQuery(mapping)
-	if err != nil || res == nil {
-		return ""
-	}
-	// A missing value comes back as null; treat it as no value, not the text "null".
-	if v, err := res.AsStructured(); err == nil && v == nil {
-		return ""
-	}
-	b, err := res.AsBytes()
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-// queryTimestamp runs the timestamp mapping. Numbers come back as structured
-// values; strings come back as raw bytes. A failed mapping gives nil, which
-// Decide reports as an invalid ts.
-func queryTimestamp(msg *service.Message, mapping *bloblang.Executor) any {
-	res, err := msg.BloblangQuery(mapping)
-	if err != nil || res == nil {
-		return nil
-	}
-	if v, err := res.AsStructured(); err == nil {
-		return v
-	}
-	if b, err := res.AsBytes(); err == nil {
-		return string(b)
-	}
-	return nil
-}
-
 // build reads the config and compiles the mappings.
 func build(conf *service.ParsedConfig, res *service.Resources) (*processor, error) {
 	cfg, err := routerConfig(conf)
@@ -255,6 +149,7 @@ func routerConfig(conf *service.ParsedConfig) (cutover.Config, error) {
 	return cfg, nil
 }
 
+// readGroups reads the cutovers list into cutover.Group values.
 func readGroups(conf *service.ParsedConfig) ([]cutover.Group, error) {
 	list, err := conf.FieldObjectList(fieldCutovers)
 	if err != nil {
@@ -275,4 +170,110 @@ func readGroups(conf *service.ParsedConfig) ([]cutover.Group, error) {
 		groups = append(groups, g)
 	}
 	return groups, nil
+}
+
+// announce logs each group's switch and sets cut_info, so operators can check
+// that every instance runs the same switch.
+func (p *processor) announce(res *service.Resources, simpleForm bool) {
+	cutInfo := res.Metrics().NewGauge("cutover_cut_info", "group", "cut_ts", "owner")
+	now := time.Now().UnixMilli()
+	for _, g := range p.router.Groups() {
+		cuts := g.Switch.Cuts()
+		last := cuts[len(cuts)-1]
+		cutInfo.Set(1, g.Name, strconv.FormatInt(last.At, 10), last.Lane.String())
+
+		which := fmt.Sprintf("group %q events=%v", g.Name, g.Events)
+		if simpleForm {
+			which = "one switch for all events"
+		}
+		res.Logger().Infof("event_time_cutover: %s: cuts=[%s] owner now=%s", which, describeCuts(cuts), g.Switch.Owner(now))
+	}
+}
+
+// describeCuts formats cuts as "FROM@0, TO@1794781800000 (2026-11-15T22:30:00Z)".
+func describeCuts(cuts []cutover.Cut) string {
+	parts := make([]string, len(cuts))
+	for i, c := range cuts {
+		parts[i] = c.String()
+		if c.At != 0 {
+			parts[i] += " (" + time.UnixMilli(c.At).UTC().Format(time.RFC3339) + ")"
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// Process keeps or drops one message. A returned error keeps the message and
+// marks it errored, so the usual errored() routing can send it to a DLQ.
+func (p *processor) Process(_ context.Context, msg *service.Message) (service.MessageBatch, error) {
+	source := queryText(msg, p.source)
+	eventType := ""
+	if p.eventType != nil {
+		eventType = queryText(msg, p.eventType)
+	}
+	outcome, group, err := p.router.Decide(source, queryTimestamp(msg, p.timestamp), eventType)
+	p.record(outcome, group, source, eventType)
+	if err != nil {
+		return nil, err
+	}
+	if outcome == cutover.NotServed {
+		return nil, nil
+	}
+	return service.MessageBatch{msg}, nil
+}
+
+// record counts one decision. Passthrough messages are not counted.
+func (p *processor) record(outcome cutover.Outcome, group, source, eventType string) {
+	if p.eventType == nil {
+		eventType = "unknown"
+	}
+	switch outcome {
+	case cutover.Served, cutover.NotServed:
+		p.routed.Incr(1, group, source, eventType, strconv.FormatBool(outcome == cutover.Served))
+	case cutover.UnknownSource:
+		p.errored.Incr(1, "unknown_source")
+	case cutover.InvalidTS:
+		p.errored.Incr(1, "invalid_ts")
+	case cutover.UnknownEventType:
+		p.errored.Incr(1, "unknown_event_type")
+	}
+}
+
+// queryText runs a mapping that yields text, such as a topic name. A failed
+// mapping gives "", which Decide reports as an unknown source.
+func queryText(msg *service.Message, mapping *bloblang.Executor) string {
+	res, err := msg.BloblangQuery(mapping)
+	if err != nil || res == nil {
+		return ""
+	}
+	// A missing value comes back as null; treat it as no value, not the text "null".
+	if v, err := res.AsStructured(); err == nil && v == nil {
+		return ""
+	}
+	b, err := res.AsBytes()
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// queryTimestamp runs the timestamp mapping. Numbers come back as structured
+// values; strings come back as raw bytes. A failed mapping gives nil, which
+// Decide reports as an invalid ts.
+func queryTimestamp(msg *service.Message, mapping *bloblang.Executor) any {
+	res, err := msg.BloblangQuery(mapping)
+	if err != nil || res == nil {
+		return nil
+	}
+	if v, err := res.AsStructured(); err == nil {
+		return v
+	}
+	if b, err := res.AsBytes(); err == nil {
+		return string(b)
+	}
+	return nil
+}
+
+// Close has nothing to release.
+func (p *processor) Close(context.Context) error {
+	return nil
 }

@@ -33,6 +33,23 @@ func spec() *service.ConfigSpec {
 	return service.NewConfigSpec().
 		Beta().
 		Summary("Moves a consumer from old sources to new sources by event time, with no lost or duplicated events.").
+		Example("Move from one topic to another",
+			"Reads both copies of every event and keeps the one whose topic owns its event time. "+
+				`Start with CUTOVER_SWITCH=FROM@0, then set "TO@2026-11-15 14:30 PT" to cut over.`, `
+input:
+  redpanda:
+    seed_brokers: [localhost:9092]
+    topics: [orders, orders_v2]
+    consumer_group: billing
+
+pipeline:
+  processors:
+    - event_time_cutover:
+        switch: ${CUTOVER_SWITCH}
+        from: [orders]
+        to: [orders_v2]
+        timestamp: this.ts
+`).
 		Fields(
 			service.NewStringField(fieldSwitch).Optional().
 				Description(`Cut history for all events, e.g. "TO@2026-11-15 14:30 PT".`),

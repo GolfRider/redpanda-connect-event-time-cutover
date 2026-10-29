@@ -5,10 +5,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/redpanda-data/benthos/v4/public/service"
+	_ "github.com/redpanda-data/connect/v4/public/components/prometheus"
+	_ "github.com/redpanda-data/connect/v4/public/components/pure"
 )
 
 func TestNewProcessor(t *testing.T) {
@@ -137,5 +142,62 @@ func TestStartupLog(t *testing.T) {
 				t.Errorf("log = %s\nwant it to contain %s", buf.String(), tt.want)
 			}
 		})
+	}
+}
+
+func TestMetrics(t *testing.T) {
+	env := service.NewEnvironment()
+	if err := Register(env); err != nil {
+		t.Fatal(err)
+	}
+	builder := env.NewStreamBuilder()
+	mux := http.NewServeMux()
+	builder.SetHTTPMux(mux)
+	if err := builder.SetMetricsYAML("prometheus: {}"); err != nil {
+		t.Fatal(err)
+	}
+	err := builder.AddProcessorYAML(`
+event_time_cutover:
+  switch: FROM@0,TO@1794781800000
+  from: [old]
+  to: [new]
+  timestamp: this.ts
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	send, err := builder.AddProducerFunc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := builder.AddConsumerFunc(func(context.Context, *service.Message) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = stream.Run(context.Background()) }()
+	defer func() { _ = stream.StopWithin(time.Second) }()
+
+	for _, topic := range []string{"old", "new", "elsewhere"} {
+		msg := service.NewMessage([]byte(`{"ts":1794781799999}`))
+		msg.MetaSet("kafka_topic", topic)
+		if err := send(context.Background(), msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	for _, want := range []string{
+		`cutover_routed{event_type="unknown",group="default",label="",path="root.pipeline.processors.0",served="true",source="old"} 1`,
+		`cutover_routed{event_type="unknown",group="default",label="",path="root.pipeline.processors.0",served="false",source="new"} 1`,
+		`cutover_errors{label="",path="root.pipeline.processors.0",reason="unknown_source"} 1`,
+		`cutover_cut_info{cut_ts="1794781800000",group="default",label="",owner="to",path="root.pipeline.processors.0"} 1`,
+	} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("metrics missing %s\ngot:\n%s", want, rec.Body.String())
+		}
 	}
 }

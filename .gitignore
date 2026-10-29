@@ -25,3 +25,6 @@ go.work.sum
 
 # e2e build output
 deploy/bin/
+
+# personal AI assistant instructions
+CLAUDE.md

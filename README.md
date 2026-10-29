@@ -5,6 +5,8 @@ a new one carrying the same events, with nothing lost and nothing read twice.
 No offset resets, no coordination between instances, no shared state.
 
 This is an unofficial community plugin for Redpanda Connect.
+Built with AI assistance (Claude). Every change was reviewed, tested and
+approved by the author.
 
 ## How it works
 

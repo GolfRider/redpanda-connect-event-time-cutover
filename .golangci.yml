@@ -4,5 +4,6 @@ linters:
   settings:
     funlen: { lines: 60, statements: 40 }
     gocognit: { min-complexity: 15 }
+    errcheck: { exclude-functions: [fmt.Fprint, fmt.Fprintf, fmt.Fprintln] } # terminal output: a failed write has no useful handling
 formatters:
   enable: [gofmt, goimports]

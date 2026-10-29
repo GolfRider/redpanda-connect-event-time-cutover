@@ -230,3 +230,17 @@ func TestGroups(t *testing.T) {
 		t.Errorf("simple form Groups() = %v, want one \"default\" group for \"*\"", got)
 	}
 }
+
+// FuzzParseTimestamp checks that no string panics and every accepted one is
+// in the epoch ms range.
+func FuzzParseTimestamp(f *testing.F) {
+	for _, s := range []string{"1794781800000", "2026-11-15T22:30:00Z", "2026-11-15T14:30:00.5-08:00", "-1", "01794781800000"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		ms, err := parseTimestamp(s)
+		if err == nil && (ms < 1e12 || ms >= 1e13) {
+			t.Fatalf("parseTimestamp(%q) = %d, outside [1e12, 1e13)", s, ms)
+		}
+	})
+}

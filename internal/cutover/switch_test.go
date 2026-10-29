@@ -254,3 +254,26 @@ func TestCutString(t *testing.T) {
 		}
 	}
 }
+
+// FuzzParseSwitch checks that no input panics and every accepted switch
+// starts at FROM@0, alternates lanes and has strictly increasing times.
+func FuzzParseSwitch(f *testing.F) {
+	for _, s := range []string{"FROM@0", "TO@2026-11-15 14:30 PT", "TO@1794781800000,FROM@2026-11-16T09:00:00-08:00", "TO@2026-03-08 02:30 PT", "TO@2026-11-16 04:00 +05:30"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		sw, err := ParseSwitch(s)
+		if err != nil {
+			return
+		}
+		cuts := sw.Cuts()
+		if cuts[0] != (Cut{From, 0}) {
+			t.Fatalf("ParseSwitch(%q) starts with %v", s, cuts[0])
+		}
+		for i := 1; i < len(cuts); i++ {
+			if cuts[i].Lane == cuts[i-1].Lane || cuts[i].At <= cuts[i-1].At {
+				t.Fatalf("ParseSwitch(%q) = %v: cuts out of order", s, cuts)
+			}
+		}
+	})
+}

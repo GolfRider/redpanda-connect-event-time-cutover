@@ -35,7 +35,7 @@ func spec() *service.ConfigSpec {
 		Summary("Moves a consumer from old sources to new sources by event time, with no lost or duplicated events.").
 		Fields(
 			service.NewStringField(fieldSwitch).Optional().
-				Description(`Cut history for all events, e.g. "FROM@0,TO@2026-11-15 14:30 PT".`),
+				Description(`Cut history for all events, e.g. "TO@2026-11-15 14:30 PT".`),
 			service.NewObjectListField(fieldCutovers,
 				service.NewStringField(fieldName).Description("Group name, used in logs and metrics."),
 				service.NewStringListField(fieldEvents).Description(`Event types in the group; "*" matches all others.`),

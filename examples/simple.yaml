@@ -1,5 +1,6 @@
 # One switch for all events: read both copies, serve each event once.
-# Cut over: CUTOVER_SWITCH="FROM@0,TO@2026-11-15 14:30 PT"
+# Dry run: CUTOVER_SWITCH=FROM@0
+# Cut over: CUTOVER_SWITCH="TO@2026-11-15 14:30 PT"
 # Roll back: append ",FROM@<later time>" and restart.
 input:
   redpanda:

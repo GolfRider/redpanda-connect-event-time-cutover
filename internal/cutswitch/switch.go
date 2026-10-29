@@ -32,18 +32,22 @@ type Switch struct {
 	cuts []Cut
 }
 
-// Parse reads a switch like "FROM@0,TO@2026-11-15 14:30 PT".
+// Parse reads a switch like "TO@2026-11-15 14:30 PT". FROM@0 at the start is
+// implied, so "FROM@0,TO@..." means the same.
 func Parse(s string) (Switch, error) {
 	// An unset env var expands to "", which must stop startup, not mean "no cutover".
 	if strings.TrimSpace(s) == "" {
 		return Switch{}, errors.New("parse switch: empty")
 	}
-	var cuts []Cut
-	for _, raw := range strings.Split(s, ",") {
+	cuts := []Cut{{Lane: From, At: 0}}
+	for i, raw := range strings.Split(s, ",") {
 		raw = strings.TrimSpace(raw)
 		cut, err := parseCut(raw)
 		if err != nil {
 			return Switch{}, fmt.Errorf("parse cut %q: %w", raw, err)
+		}
+		if i == 0 && cut == cuts[0] {
+			continue // the implied FROM@0, written out
 		}
 		if err := checkOrder(cuts, cut); err != nil {
 			return Switch{}, fmt.Errorf("parse cut %q: %w", raw, err)
@@ -86,12 +90,6 @@ func parseCut(raw string) (Cut, error) {
 
 // checkOrder rejects histories that Owner could not read unambiguously.
 func checkOrder(cuts []Cut, next Cut) error {
-	if len(cuts) == 0 {
-		if next != (Cut{Lane: From, At: 0}) {
-			return errors.New("first cut must be FROM@0")
-		}
-		return nil
-	}
 	last := cuts[len(cuts)-1]
 	if next.Lane == last.Lane {
 		return errors.New("cuts must alternate FROM and TO")

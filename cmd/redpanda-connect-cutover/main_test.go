@@ -11,8 +11,8 @@ import (
 )
 
 func TestExamplesLint(t *testing.T) {
-	t.Setenv("CUTOVER_SWITCH", "FROM@0,TO@2026-11-15 14:30 PT")
-	t.Setenv("ORDERS_SWITCH", "FROM@0,TO@2026-11-15 14:30 PT")
+	t.Setenv("CUTOVER_SWITCH", "TO@2026-11-15 14:30 PT")
+	t.Setenv("ORDERS_SWITCH", "TO@2026-11-15 14:30 PT")
 	t.Setenv("REST_SWITCH", "FROM@0")
 	env := service.NewEnvironment()
 	if err := processor.Register(env); err != nil {

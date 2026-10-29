@@ -24,7 +24,7 @@ func TestNew(t *testing.T) {
 		{"simple form without passthrough", Config{Switch: "FROM@0", From: from, To: to}, ""},
 		{"groups", Config{Groups: []Group{orders, rest}, From: from, To: to, HasEventType: true}, ""},
 		{"lone * group needs no event_type", Config{Groups: []Group{rest}, From: from, To: to}, ""},
-		{"invalid switch", Config{Switch: "TO@0", From: from, To: to}, `switch: parse cut "TO@0": first cut must be FROM@0`},
+		{"invalid switch", Config{Switch: "TO@0", From: from, To: to}, `switch: parse cut "TO@0": cut times must strictly increase`},
 		{"invalid group switch", Config{Groups: []Group{{Name: "orders", Events: []string{"*"}, Switch: "TO@0"}}, From: from, To: to}, `group "orders": switch:`},
 		{"neither switch nor cutovers", Config{From: from, To: to}, "exactly one of switch or cutovers"},
 		{"both switch and cutovers", Config{Switch: "FROM@0", Groups: []Group{rest}, From: from, To: to}, "exactly one of switch or cutovers"},

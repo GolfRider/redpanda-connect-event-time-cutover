@@ -49,8 +49,11 @@ Examples:
 | Switch | Meaning |
 |---|---|
 | `FROM@0` | old owns everything; new is counted and dropped (dry run) |
-| `FROM@0,TO@T1` | new owns ts >= T1; old owns ts < T1 |
-| `FROM@0,TO@T1,FROM@T2` | rollback: old owns ts < T1 and ts >= T2; new owns [T1, T2) |
+| `TO@T1` | new owns ts >= T1; old owns ts < T1 |
+| `TO@T1,FROM@T2` | rollback: old owns ts < T1 and ts >= T2; new owns [T1, T2) |
+
+`FROM@0` at the start is implied: `TO@T1` and `FROM@0,TO@T1` are the same
+switch. The dry run still writes `FROM@0`, because an empty switch is invalid.
 
 Keeping the full history makes rollback exact: late events with ts < T1 still
 belong to old after a rollback.
@@ -97,7 +100,7 @@ ALIAS  := "PT" | "MT" | "CT" | "ET"
 
 Validation (parse error -> instance refuses to start):
 - empty string is invalid (an unset env var becomes empty)
-- first cut must be `FROM@0`
+- after the implied `FROM@0`, the first cut must be `TO` at a time > 0
 - cuts alternate `FROM` / `TO`
 - cut times strictly increasing
 - any malformed TIME
@@ -288,7 +291,7 @@ cutover-switch check   "$CUTOVER_SWITCH" --min-lead 30m
 2. Add the new source (dry run). Start it with a fresh consumer group from
    before any possible ts >= T (earliest or a safe timestamp, never "latest").
    Compare counts per event type over the same window; check CPU and memory.
-3. Set `FROM@0,TO@<T>`, one environment at a time. T = rollout time + margin.
+3. Set `TO@<T>`, one environment at a time. T = rollout time + margin.
    Before T, all instances agree; after T, served flips to the new source.
    Rollback = append `FROM@<T2>` (future), never return to plain `FROM@0`.
    With groups, each group runs this step on its own switch.

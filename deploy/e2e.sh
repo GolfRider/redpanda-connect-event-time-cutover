@@ -42,8 +42,8 @@ docker compose up -d --quiet-pull --wait redpanda 2>/dev/null
 rpk topic create orders orders_v2 billing_events >/dev/null
 
 phase "FROM@0" 1 100 $((T - 1000))                  # all before T
-phase "FROM@0,TO@$T" 101 200 $((T - 150))           # 101..149 before T, 150..200 from T on
-phase "FROM@0,TO@$T,FROM@$R" 201 300 $((R - 250))   # 201..249 before R, 250..300 from R on
+phase "TO@$T" 101 200 $((T - 150))           # 101..149 before T, 150..200 from T on
+phase "TO@$T,FROM@$R" 201 300 $((R - 250))   # 201..249 before R, 250..300 from R on
 
 # The final switch holds the whole history, so it decides every id.
 problems=$(rpk topic consume billing_events -o :end -f '%v\n' | jq -rs --argjson t "$T" --argjson r "$R" '

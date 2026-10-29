@@ -21,6 +21,8 @@ func TestParse(t *testing.T) {
 		want []Cut
 	}{
 		{"dry run", "FROM@0", []Cut{{From, 0}}},
+		{"FROM@0 implied", "TO@1794781800000", []Cut{{From, 0}, {To, winterCut}}},
+		{"rollback with FROM@0 implied", "TO@1794781800000,FROM@1794800000000", []Cut{{From, 0}, {To, winterCut}, {From, 1794800000000}}},
 		{"cut by epoch ms", "FROM@0,TO@1794781800000", []Cut{{From, 0}, {To, winterCut}}},
 		{"rollback keeps history", "FROM@0,TO@1794781800000,FROM@1794800000000", []Cut{{From, 0}, {To, winterCut}, {From, 1794800000000}}},
 		{"whitespace around cuts", " FROM@0 ,\tTO@1794781800000 ", []Cut{{From, 0}, {To, winterCut}}},
@@ -75,8 +77,9 @@ func TestParseRejectsBadSwitch(t *testing.T) {
 		{"passthrough is not a lane", "FROM@0,PASSTHROUGH@1794781800000", "unknown lane"},
 		{"space before @", "FROM @0", "unknown lane"},
 		{"space after @", "FROM@ 0", "unknown time"},
-		{"first cut is TO", "TO@0", "first cut must be FROM@0"},
-		{"first cut not at 0", "FROM@1794781800000", "first cut must be FROM@0"},
+		{"TO at 0", "TO@0", "strictly increase"},
+		{"FROM after implied FROM@0", "FROM@1794781800000", "alternate"},
+		{"FROM@0 twice", "FROM@0,FROM@0", "alternate"},
 		{"FROM twice", "FROM@0,FROM@1794781800000", "alternate"},
 		{"TO twice", "FROM@0,TO@1794781800000,TO@1794800000000", "alternate"},
 		{"equal times", "FROM@0,TO@1794781800000,FROM@1794781800000", "strictly increase"},

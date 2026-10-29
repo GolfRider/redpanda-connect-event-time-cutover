@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/redpanda-data/benthos/v4 v4.84.0
 	github.com/redpanda-data/connect/public/bundle/free/v4 v4.115.0
+	github.com/redpanda-data/connect/v4 v4.115.0
 )
 
 require (
@@ -331,7 +332,6 @@ require (
 	github.com/redpanda-data/common-go/authz v0.2.1-0.20260319205134-242ab3c168b8 // indirect
 	github.com/redpanda-data/common-go/license v0.0.0-20260318014216-2bbd72bde0a0 // indirect
 	github.com/redpanda-data/common-go/redpanda-otel-exporter v0.4.0 // indirect
-	github.com/redpanda-data/connect/v4 v4.115.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rickb777/period v1.0.32 // indirect
 	github.com/rickb777/plural/v2 v2.1.1 // indirect

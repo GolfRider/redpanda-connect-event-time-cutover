@@ -1,4 +1,4 @@
-package cutswitch
+package cutover
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ const (
 	summerCut = 1784151000000 // 2026-07-15 21:30 UTC = 14:30 PDT
 )
 
-func TestParse(t *testing.T) {
+func TestParseSwitch(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
@@ -51,18 +51,18 @@ func TestParse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Parse(tt.in)
+			got, err := ParseSwitch(tt.in)
 			if err != nil {
-				t.Fatalf("Parse(%q) error: %v", tt.in, err)
+				t.Fatalf("ParseSwitch(%q) error: %v", tt.in, err)
 			}
 			if !slices.Equal(got.cuts, tt.want) {
-				t.Errorf("Parse(%q) = %v, want %v", tt.in, got.cuts, tt.want)
+				t.Errorf("ParseSwitch(%q) = %v, want %v", tt.in, got.cuts, tt.want)
 			}
 		})
 	}
 }
 
-func TestParseRejectsBadSwitch(t *testing.T) {
+func TestParseSwitchRejectsBadCuts(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      string
@@ -96,15 +96,15 @@ func TestParseRejectsBadSwitch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse(tt.in)
+			_, err := ParseSwitch(tt.in)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("Parse(%q) error = %v, want it to contain %q", tt.in, err, tt.wantErr)
+				t.Errorf("ParseSwitch(%q) error = %v, want it to contain %q", tt.in, err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestParseRejectsBadTime(t *testing.T) {
+func TestParseSwitchRejectsBadTime(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      string
@@ -143,9 +143,9 @@ func TestParseRejectsBadTime(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse(tt.in)
+			_, err := ParseSwitch(tt.in)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("Parse(%q) error = %v, want it to contain %q", tt.in, err, tt.wantErr)
+				t.Errorf("ParseSwitch(%q) error = %v, want it to contain %q", tt.in, err, tt.wantErr)
 			}
 		})
 	}
@@ -177,9 +177,9 @@ func TestOwner(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sw, err := Parse(tt.in)
+			sw, err := ParseSwitch(tt.in)
 			if err != nil {
-				t.Fatalf("Parse(%q) error: %v", tt.in, err)
+				t.Fatalf("ParseSwitch(%q) error: %v", tt.in, err)
 			}
 			if got := sw.Owner(tt.ts); got != tt.want {
 				t.Errorf("Owner(%d) = %v, want %v", tt.ts, got, tt.want)
@@ -205,9 +205,9 @@ func TestOwnerFlipsExactlyAtCuts(t *testing.T) {
 			at += 1 + rng.Int64N(1e10)
 			in += fmt.Sprintf(",%s@%d", keywords[i%2], at)
 		}
-		sw, err := Parse(in)
+		sw, err := ParseSwitch(in)
 		if err != nil {
-			t.Fatalf("Parse(%q) error: %v", in, err)
+			t.Fatalf("ParseSwitch(%q) error: %v", in, err)
 		}
 		for i := 1; i < len(sw.cuts); i++ {
 			c, prev := sw.cuts[i], sw.cuts[i-1]
@@ -219,7 +219,7 @@ func TestOwnerFlipsExactlyAtCuts(t *testing.T) {
 }
 
 func TestCuts(t *testing.T) {
-	sw, err := Parse("FROM@0,TO@1794781800000,FROM@1794800000000")
+	sw, err := ParseSwitch("FROM@0,TO@1794781800000,FROM@1794800000000")
 	if err != nil {
 		t.Fatal(err)
 	}

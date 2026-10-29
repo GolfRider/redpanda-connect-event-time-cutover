@@ -1,4 +1,5 @@
-// Package cutover decides, per message, whether the processor serves it.
+// Package cutover parses cutover switches and decides, per message, whether
+// the processor serves it.
 package cutover
 
 import (
@@ -9,8 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"time"
-
-	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutswitch"
 )
 
 // Config is the processor config: either Switch (simple form) or Groups.
@@ -45,20 +44,20 @@ const (
 type GroupInfo struct {
 	Name   string
 	Events []string
-	Switch cutswitch.Switch
+	Switch Switch
 }
 
 // Router decides, per message, whether to serve it.
 type Router struct {
-	groups      map[string]group          // event type -> group; "*" is the catch-all
-	infos       []GroupInfo               // in config order
-	lanes       map[string]cutswitch.Lane // from/to sources
+	groups      map[string]group // event type -> group; "*" is the catch-all
+	infos       []GroupInfo      // in config order
+	lanes       map[string]Lane  // from/to sources
 	passthrough map[string]bool
 }
 
 type group struct {
 	name string
-	sw   cutswitch.Switch
+	sw   Switch
 }
 
 // New validates cfg and builds a Router. Any error must stop startup.
@@ -68,7 +67,7 @@ func New(cfg Config) (*Router, error) {
 	}
 	if cfg.Switch != "" {
 		// Report errors against the switch the user wrote, not the implicit group.
-		if _, err := cutswitch.Parse(cfg.Switch); err != nil {
+		if _, err := ParseSwitch(cfg.Switch); err != nil {
 			return nil, fmt.Errorf("switch: %w", err)
 		}
 		cfg.Groups = []Group{{Name: "default", Events: []string{"*"}, Switch: cfg.Switch}}
@@ -104,13 +103,13 @@ func (r *Router) setSources(from, to, passthrough []string) error {
 		}
 	}
 
-	r.lanes = map[string]cutswitch.Lane{}
+	r.lanes = map[string]Lane{}
 	r.passthrough = map[string]bool{}
 	for _, src := range from {
-		r.lanes[src] = cutswitch.From
+		r.lanes[src] = From
 	}
 	for _, src := range to {
-		r.lanes[src] = cutswitch.To
+		r.lanes[src] = To
 	}
 	for _, src := range passthrough {
 		r.passthrough[src] = true
@@ -131,7 +130,7 @@ func newGroups(groups []Group) (map[string]group, []GroupInfo, error) {
 		if len(g.Events) == 0 {
 			return nil, nil, fmt.Errorf("group %q has no events", g.Name)
 		}
-		sw, err := cutswitch.Parse(g.Switch)
+		sw, err := ParseSwitch(g.Switch)
 		if err != nil {
 			return nil, nil, fmt.Errorf("group %q: switch: %w", g.Name, err)
 		}

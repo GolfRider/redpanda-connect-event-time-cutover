@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutswitch"
 )
 
 func TestNew(t *testing.T) {
@@ -219,7 +217,7 @@ func TestGroups(t *testing.T) {
 	if !slices.Equal(got[0].Events, []string{"order_created", "order_shipped"}) {
 		t.Errorf("orders events = %v", got[0].Events)
 	}
-	wantCuts := []cutswitch.Cut{{Lane: cutswitch.From}, {Lane: cutswitch.To, At: 1794781800000}}
+	wantCuts := []Cut{{Lane: From}, {Lane: To, At: 1794781800000}}
 	if !slices.Equal(got[0].Switch.Cuts(), wantCuts) {
 		t.Errorf("orders cuts = %v, want %v", got[0].Switch.Cuts(), wantCuts)
 	}

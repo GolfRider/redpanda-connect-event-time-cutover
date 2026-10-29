@@ -157,7 +157,7 @@ Startup validation (error -> refuse to start):
 - a source in more than one lane; `from` or `to` empty
 - an event type in more than one group; more than one `"*"` group
 - duplicate or empty group names; a group with no events
-- any invalid switch; every group's switch is built with `cutswitch.Parse`,
+- any invalid switch; every group's switch is built with `ParseSwitch`,
   never left as the zero value (which silently behaves like `FROM@0`)
 
 ## 6. Event timestamp parsing
@@ -223,8 +223,9 @@ caches) that may drop one copy; processors that merge or split messages.
 ## 10. Package layout
 
 ```
-/internal/cutswitch     pure: parse, validate, Owner(ts), Describe(); no Redpanda Connect imports
-/internal/cutover       pure: config model, validation, Decide(source, ts, eventType) -> Decision
+/internal/cutover       pure, no Redpanda Connect imports:
+                          switch.go  parse and validate a switch, Owner(ts)
+                          router.go  config model, validation, Decide(source, ts, eventType)
 /processor              plugin glue: ConfigSpec, constructor, Process(), metrics, logs
 /cmd/redpanda-connect-cutover   custom binary: standard components + this processor
 /cmd/cutover-switch     small ops tool (section 12)
@@ -243,7 +244,7 @@ Goal: ship as a standalone module **and** be easy to contribute to Redpanda
 Connect. Upstream would copy the code into its tree, not import this module
 (`internal/` is not importable, and small external deps are unwelcome).
 
-- `cutswitch` and `cutover` stay pure (standard library only), so they copy
+- `cutover` stays pure (standard library only), so it copies
   over unchanged apart from import paths.
 - `processor` uses only the public `service` API, as upstream components do.
 - `processor` exports `Register(env *service.Environment) error` instead of
@@ -259,7 +260,7 @@ Connect. Upstream would copy the code into its tree, not import this module
 
 ## 11. Tests
 
-- `cutswitch`: table tests for valid / invalid switches (every rule in section 4),
+- switch: table tests for valid / invalid switches (every rule in section 4),
   RFC 3339 with and without offset, SIMPLE form with `UTC` / `Z` / offset /
   IANA name / alias (winter and summer dates), DST gap and overlap times,
   rejected zone abbreviations and am/pm, 13-digit boundaries, whitespace.

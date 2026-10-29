@@ -1,5 +1,4 @@
-// Package cutswitch parses a cutover switch and decides which lane owns an event time.
-package cutswitch
+package cutover
 
 import (
 	"errors"
@@ -32,9 +31,9 @@ type Switch struct {
 	cuts []Cut
 }
 
-// Parse reads a switch like "TO@2026-11-15 14:30 PT". FROM@0 at the start is
+// ParseSwitch reads a switch like "TO@2026-11-15 14:30 PT". FROM@0 at the start is
 // implied, so "FROM@0,TO@..." means the same.
-func Parse(s string) (Switch, error) {
+func ParseSwitch(s string) (Switch, error) {
 	// An unset env var expands to "", which must stop startup, not mean "no cutover".
 	if strings.TrimSpace(s) == "" {
 		return Switch{}, errors.New("parse switch: empty")

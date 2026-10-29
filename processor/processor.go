@@ -13,7 +13,6 @@ import (
 	"github.com/redpanda-data/benthos/v4/public/service"
 
 	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutover"
-	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutswitch"
 )
 
 const (
@@ -145,7 +144,7 @@ func (p *processor) announce(res *service.Resources, simpleForm bool) {
 }
 
 // describeCuts formats cuts as "FROM@0, TO@1794781800000 (2026-11-15T22:30:00Z)".
-func describeCuts(cuts []cutswitch.Cut) string {
+func describeCuts(cuts []cutover.Cut) string {
 	parts := make([]string, len(cuts))
 	for i, c := range cuts {
 		parts[i] = c.String()

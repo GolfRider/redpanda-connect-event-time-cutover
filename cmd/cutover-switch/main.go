@@ -10,7 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutswitch"
+	"github.com/GolfRider/redpanda-connect-event-time-cutover/internal/cutover"
 )
 
 const usage = `usage:
@@ -40,7 +40,7 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 
 // explain prints each cut, then which lane owns each range of event time.
 func explain(stdout, stderr io.Writer, s string, local *time.Location) int {
-	sw, err := cutswitch.Parse(s)
+	sw, err := cutover.ParseSwitch(s)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -75,7 +75,7 @@ func explain(stdout, stderr io.Writer, s string, local *time.Location) int {
 // at the cut, instances on the old switch disagree with those on the new one.
 // args is the switch followed by flags.
 func check(stdout, stderr io.Writer, args []string, now time.Time) int {
-	sw, err := cutswitch.Parse(args[0])
+	sw, err := cutover.ParseSwitch(args[0])
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

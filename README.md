@@ -23,6 +23,9 @@ are served from the new one. The other copy is dropped. Because the decision
 depends only on the event's own timestamp, every instance makes the same choice
 without talking to the others, and restarts, lag and rebalances don't change it.
 
+The exact rules, and the reasons behind them, are in
+[docs/design.md](docs/design.md).
+
 ## Before you use it
 
 These must hold, or events can be lost or duplicated:

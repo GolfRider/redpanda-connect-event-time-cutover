@@ -1,0 +1,21 @@
+# One switch for all events: read both copies, serve each event once.
+# Cut over: CUTOVER_SWITCH="FROM@0,TO@2026-11-15 14:30 PT"
+# Roll back: append ",FROM@<later time>" and restart.
+input:
+  redpanda:
+    seed_brokers: [localhost:9092]
+    topics: [orders, orders_v2]
+    consumer_group: billing
+
+pipeline:
+  processors:
+    - event_time_cutover:
+        switch: ${CUTOVER_SWITCH}
+        from: [orders]
+        to: [orders_v2]
+        timestamp: this.ts
+
+output:
+  redpanda:
+    seed_brokers: [localhost:9092]
+    topic: billing_events

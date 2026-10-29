@@ -1,0 +1,28 @@
+# Event types cut over at different times. Events not listed by any group
+# fall to the "*" group. Payments are not migrating and pass through.
+input:
+  redpanda:
+    seed_brokers: [localhost:9092]
+    topics: [orders, orders_v2, payments]
+    consumer_group: billing
+
+pipeline:
+  processors:
+    - event_time_cutover:
+        cutovers:
+          - name: orders
+            events: [order_created, order_cancelled]
+            switch: ${ORDERS_SWITCH}
+          - name: rest
+            events: ["*"]
+            switch: ${REST_SWITCH}
+        from: [orders]
+        to: [orders_v2]
+        passthrough: [payments]
+        timestamp: this.ts
+        event_type: this.type
+
+output:
+  redpanda:
+    seed_brokers: [localhost:9092]
+    topic: billing_events

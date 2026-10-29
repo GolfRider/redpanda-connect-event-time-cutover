@@ -1,0 +1,30 @@
+# Messages the processor cannot place (unknown source, bad ts, unknown event
+# type) are marked errored. Send them to a DLQ instead of the main output.
+input:
+  redpanda:
+    seed_brokers: [localhost:9092]
+    topics: [orders, orders_v2]
+    consumer_group: billing
+
+pipeline:
+  processors:
+    - event_time_cutover:
+        switch: ${CUTOVER_SWITCH}
+        from: [orders]
+        to: [orders_v2]
+        timestamp: this.ts
+
+output:
+  switch:
+    cases:
+      - check: errored()
+        output:
+          redpanda:
+            seed_brokers: [localhost:9092]
+            topic: billing_dlq
+          processors:
+            - mutation: meta error = error() # keep the reason with the message
+      - output:
+          redpanda:
+            seed_brokers: [localhost:9092]
+            topic: billing_events

@@ -1,0 +1,29 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.1.9
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --kafka-addr=0.0.0.0:9092
+      - --advertise-kafka-addr=localhost:9092
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 2s
+      retries: 30
+
+  cutover:
+    # e2e.sh builds the binary on the host, where the Go cache makes it fast.
+    image: gcr.io/distroless/static-debian12
+    entrypoint: ["/redpanda-connect-cutover", "run", "/config.yaml"]
+    # Share Redpanda's network so the example's localhost:9092 reaches the broker.
+    network_mode: service:redpanda
+    environment:
+      - CUTOVER_SWITCH
+    volumes:
+      - ./bin/redpanda-connect-cutover:/redpanda-connect-cutover:ro
+      - ../examples/simple.yaml:/config.yaml:ro
+    depends_on:
+      redpanda:
+        condition: service_healthy

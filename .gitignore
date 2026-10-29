@@ -22,3 +22,6 @@ go.work.sum
 # IDE
 .idea/
 .vscode/
+
+# e2e build output
+deploy/bin/

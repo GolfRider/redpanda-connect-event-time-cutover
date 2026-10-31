@@ -155,8 +155,9 @@ importing:
 - **Fuzzing:** `FuzzParseSwitch` and `FuzzParseTimestamp` check that no input
   panics and nothing invalid is accepted. Run longer with `go test -fuzz`.
 - **End to end:** `deploy/e2e.sh` runs a dry run, a cut and a rollback against
-  a real Redpanda and checks that each event comes out once, from the right
-  topic.
+  a real Redpanda, then adds a second instance and sends bad input. It checks
+  that each event comes out once, from the right topic, and that bad input
+  reaches the dead-letter topic.
 
 ## Out of scope
 

@@ -23,7 +23,17 @@ services:
       - CUTOVER_SWITCH
     volumes:
       - ./bin/redpanda-connect-cutover:/redpanda-connect-cutover:ro
-      - ../examples/simple.yaml:/config.yaml:ro
+      - ./e2e.yaml:/config.yaml:ro
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # A second instance in the same consumer group, started only by e2e.sh.
+  cutover2:
+    extends: cutover
+    # Both instances share one network, so this one needs its own HTTP port.
+    entrypoint: ["/redpanda-connect-cutover", "run", "--set", "http.address=0.0.0.0:4196", "/config.yaml"]
+    profiles: [multi]
     depends_on:
       redpanda:
         condition: service_healthy

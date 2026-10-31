@@ -1,0 +1,28 @@
+# The e2e.sh pipeline: examples/dlq.yaml plus a stray topic that is in no
+# lane, so unknown sources reach the dead-letter topic too.
+input:
+  redpanda:
+    seed_brokers: [localhost:9092]
+    topics: [orders, orders_v2, stray]
+    consumer_group: billing
+
+pipeline:
+  processors:
+    - event_time_cutover:
+        switch: ${CUTOVER_SWITCH}
+        from: [orders]
+        to: [orders_v2]
+        timestamp: this.ts
+
+output:
+  switch:
+    cases:
+      - check: errored()
+        output:
+          redpanda:
+            seed_brokers: [localhost:9092]
+            topic: billing_dlq
+      - output:
+          redpanda:
+            seed_brokers: [localhost:9092]
+            topic: billing_events
